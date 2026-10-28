@@ -8,6 +8,9 @@
   body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.3rem; }
   .demo-tag { color: #b45309; font-size: 0.85rem; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem 1rem; margin: 0.75rem 0; }
+  .card h2 { font-size: 1rem; margin: 0 0 0.25rem; }
+  .card p { margin: 0.25rem 0; }
   #chat { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; min-height: 280px; }
   .msg { margin: 0.5rem 0; }
   .msg.user { text-align: right; }
@@ -15,13 +18,25 @@
   .msg.user .bubble { background: #dbeafe; }
   .msg.bot .bubble { background: #f3f4f6; }
   .pay-card { border: 1px solid #facc15; background: #fefce8; border-radius: 8px; padding: 0.75rem; margin: 0.5rem 0; }
-  .chips button, #send { cursor: pointer; margin: 0.25rem 0.25rem 0 0; padding: 0.4rem 0.7rem; border-radius: 999px; border: 1px solid #ccc; background: #fff; }
+  .chips button, #send, #refresh-bookings, .cancel-btn { cursor: pointer; margin: 0.25rem 0.25rem 0 0; padding: 0.4rem 0.7rem; border-radius: 999px; border: 1px solid #ccc; background: #fff; }
   #input-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
   #input { flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 8px; }
+  .booking-row { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.25rem 0; border-bottom: 1px solid #eee; }
+  .booking-row:last-child { border-bottom: none; }
+  .status-confirmed { color: #15803d; font-weight: 600; }
+  .status-pending_deposit { color: #b45309; font-weight: 600; }
+  .status-cancelled { color: #6b7280; }
 </style>
 </head>
 <body>
 <h1>BrightWash Auto Detailing <span class="demo-tag">(DEMO — fictional shop)</span></h1>
+
+<div class="card">
+  <h2>BrightWash Auto Detailing — Austin, TX</h2>
+  <p>Open Monday–Saturday, 9:00 AM – 6:00 PM</p>
+  <p>Services: basic wash ($29) · full detail ($129) · ceramic coating ($299) — $25 deposit confirms any booking.</p>
+</div>
+
 <p>AI assistant + PayPal sandbox checkout demo. Try the chips, or type your own message.</p>
 
 <div id="chat"></div>
@@ -32,11 +47,17 @@
   <button data-msg="How much is a full detail?">Price?</button>
   <button data-msg="Book a full detail tomorrow 10am">Book full detail tomorrow 10am</button>
   <button data-msg="Pay deposit">Pay deposit</button>
+  <button data-msg="Cancel my booking">Cancel booking</button>
 </div>
 
 <div id="input-row">
   <input id="input" placeholder="Type a message…" autocomplete="off">
   <button id="send">Send</button>
+</div>
+
+<div class="card">
+  <h2>My bookings <button id="refresh-bookings">Refresh</button></h2>
+  <div id="bookings">No bookings yet.</div>
 </div>
 
 <script>
@@ -81,6 +102,36 @@ function addPayCard(payment) {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
 
+async function refreshBookings() {
+  const res = await fetch("/api/bookings");
+  const list = await res.json();
+  const el = document.getElementById("bookings");
+  if (!list.length) { el.textContent = "No bookings yet."; return; }
+  el.innerHTML = "";
+  list.forEach((b) => {
+    const row = document.createElement("div");
+    row.className = "booking-row";
+    const info = document.createElement("span");
+    info.textContent = `${b.id}: ${b.service} at ${b.date_time} — `;
+    const st = document.createElement("span");
+    st.className = "status-" + b.status;
+    st.textContent = b.status;
+    info.appendChild(st);
+    row.appendChild(info);
+    if (b.status === "pending_deposit") {
+      const btn = document.createElement("button");
+      btn.className = "cancel-btn";
+      btn.textContent = "Cancel";
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/bookings/${b.id}/cancel`, {method: "POST"});
+        refreshBookings();
+      });
+      row.appendChild(btn);
+    }
+    el.appendChild(row);
+  });
+}
+
 async function send(text) {
   if (!text.trim()) return;
   addMsg(text, "user");
@@ -91,11 +142,12 @@ async function send(text) {
     body: JSON.stringify({session_id: sessionId, message: text}),
   });
   const data = await res.json();
-  addMsg(data.reply, "bot");
+  addMsg(data.reply || data.error || "Something went wrong.", "bot");
   if (data.booking) {
     addMsg(`Booking ${data.booking.id}: ${data.booking.service} at ${data.booking.date_time} — status: ${data.booking.status}`, "bot");
   }
   if (data.payment) addPayCard(data.payment);
+  refreshBookings();
 }
 
 document.getElementById("send").addEventListener("click", () => send(inputEl.value));
@@ -103,8 +155,10 @@ inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") send(inputEl
 document.querySelectorAll(".chips button").forEach((b) =>
   b.addEventListener("click", () => send(b.dataset.msg))
 );
+document.getElementById("refresh-bookings").addEventListener("click", refreshBookings);
 
 addMsg("Hi! I'm the assistant for BrightWash Auto Detailing. Ask about hours, prices, or book an appointment.", "bot");
+refreshBookings();
 </script>
 </body>
 </html>
