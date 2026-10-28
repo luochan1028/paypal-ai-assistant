@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrightWash Assistant — Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  .demo-tag { color: #b45309; font-size: 0.85rem; }
+  #chat { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; min-height: 280px; }
+  .msg { margin: 0.5rem 0; }
+  .msg.user { text-align: right; }
+  .msg .bubble { display: inline-block; padding: 0.5rem 0.75rem; border-radius: 12px; max-width: 85%; text-align: left; }
+  .msg.user .bubble { background: #dbeafe; }
+  .msg.bot .bubble { background: #f3f4f6; }
+  .pay-card { border: 1px solid #facc15; background: #fefce8; border-radius: 8px; padding: 0.75rem; margin: 0.5rem 0; }
+  .chips button, #send { cursor: pointer; margin: 0.25rem 0.25rem 0 0; padding: 0.4rem 0.7rem; border-radius: 999px; border: 1px solid #ccc; background: #fff; }
+  #input-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+  #input { flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h1>BrightWash Auto Detailing <span class="demo-tag">(DEMO — fictional shop)</span></h1>
+<p>AI assistant + PayPal sandbox checkout demo. Try the chips, or type your own message.</p>
+
+<div id="chat"></div>
+
+<div class="chips">
+  <button data-msg="Hi">Hi</button>
+  <button data-msg="What are your hours?">Hours?</button>
+  <button data-msg="How much is a full detail?">Price?</button>
+  <button data-msg="Book a full detail tomorrow 10am">Book full detail tomorrow 10am</button>
+  <button data-msg="Pay deposit">Pay deposit</button>
+</div>
+
+<div id="input-row">
+  <input id="input" placeholder="Type a message…" autocomplete="off">
+  <button id="send">Send</button>
+</div>
+
+<script>
+const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+const chatEl = document.getElementById("chat");
+const inputEl = document.getElementById("input");
+
+function addMsg(text, who) {
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  const bubble = document.createElement("span");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  div.appendChild(bubble);
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function addPayCard(payment) {
+  const div = document.createElement("div");
+  div.className = "pay-card";
+  const title = document.createElement("div");
+  title.textContent = `Deposit $${payment.amount} — order ${payment.order_id}`;
+  div.appendChild(title);
+  if (payment.mock) {
+    // Mock orders are not real PayPal orders, so simulate buyer approval.
+    const btn = document.createElement("a");
+    btn.href = `/api/paypal/return?token=${payment.order_id}`;
+    btn.textContent = "Simulate buyer approval (mock mode)";
+    div.appendChild(document.createElement("br"));
+    div.appendChild(btn);
+  } else {
+    const link = document.createElement("a");
+    link.href = payment.approve_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Pay with PayPal (sandbox)";
+    div.appendChild(document.createElement("br"));
+    div.appendChild(link);
+  }
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function send(text) {
+  if (!text.trim()) return;
+  addMsg(text, "user");
+  inputEl.value = "";
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({session_id: sessionId, message: text}),
+  });
+  const data = await res.json();
+  addMsg(data.reply, "bot");
+  if (data.booking) {
+    addMsg(`Booking ${data.booking.id}: ${data.booking.service} at ${data.booking.date_time} — status: ${data.booking.status}`, "bot");
+  }
+  if (data.payment) addPayCard(data.payment);
+}
+
+document.getElementById("send").addEventListener("click", () => send(inputEl.value));
+inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") send(inputEl.value); });
+document.querySelectorAll(".chips button").forEach((b) =>
+  b.addEventListener("click", () => send(b.dataset.msg))
+);
+
+addMsg("Hi! I'm the assistant for BrightWash Auto Detailing. Ask about hours, prices, or book an appointment.", "bot");
+</script>
+</body>
+</html>
